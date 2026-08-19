@@ -1,0 +1,51 @@
+packages:
+  - wab
+  - wab/playwright
+  - canvas-packages
+  - canvas-packages/internal_pkgs/*
+  - loader-bundle-env
+  - loader-bundle-env/internal_pkgs/*
+  - loader-html-hydrate
+
+overrides:
+  # Unified from the legacy per-package yarn resolutions.
+  "@plasmicpkgs/antd>antd": "4.19.5"
+  "@plasmicpkgs/react-slick>antd": "4.19.5"
+  "@plasmicpkgs/antd5>antd": "^5.0.0"
+  "@ant-design/pro-components>antd": "^5.0.0"
+  "@ant-design/pro-table>antd": "^5.0.0"
+  "@ant-design/pro-list>antd": "^5.0.0"
+  "react-aria-components": "1.9.0"
+  "retry-request": "^8.0.2"
+  "sha.js": "^2.4.12"
+  "vitest>vite": "^6.4.2"
+  "rc-util": "^5.44.4"
+  "lottie-web": ">=5.13.0"
+
+allowBuilds:
+  "@fortawesome/fontawesome-common-types": true
+  "@fortawesome/fontawesome-free": true
+  "@fortawesome/fontawesome-svg-core": true
+  "@fortawesome/free-regular-svg-icons": true
+  "@fortawesome/free-solid-svg-icons": true
+  "@parcel/watcher": true
+  "@swc/core": true
+  aws-sdk: true
+  bcrypt: true
+  core-js: true
+  core-js-pure: true
+  es5-ext: true
+  esbuild: false
+  gatsby: true
+  gatsby-cli: true
+  lmdb: true
+  msgpackr-extract: true
+  msw: true
+  nx: true
+  protobufjs: true
+  sharp: true
+  unrs-resolver: true
+
+shamefullyHoist: true
+linkWorkspacePackages: deep
+preferWorkspacePackages: true
