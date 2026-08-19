@@ -10,7 +10,8 @@
 
 # Generated files
 wab/src/wab/gen
-wab/src/wab/client
+# NOTE: wab/src/wab/client is *not* excluded; server code imports from it at
+# runtime (e.g. @/wab/client/components/canvas/slate).
 wab/src/wab/shared/model/classes.ts
 wab/src/wab/shared/model/classes-metas.ts
 wab/src/wab/styles/_tokens.sass
