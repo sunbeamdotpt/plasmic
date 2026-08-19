@@ -1,5 +1,6 @@
 import { defineConfig } from "@rsbuild/core";
 import { pluginLess } from "@rsbuild/plugin-less";
+import { pluginNodePolyfill } from "@rsbuild/plugin-node-polyfill";
 import { pluginReact } from "@rsbuild/plugin-react";
 import { pluginSass } from "@rsbuild/plugin-sass";
 import {
@@ -21,7 +22,15 @@ import {
   mkDefinePluginOptsForEnv,
 } from "./tools/webpack/mkDefinePluginOptsForEnv";
 
-const commitHash = execSync("git rev-parse HEAD").toString().slice(0, 6);
+const commitHash =
+  process.env.BUILD_COMMIT_HASH?.slice(0, 6) ??
+  (() => {
+    try {
+      return execSync("git rev-parse HEAD").toString().slice(0, 6);
+    } catch {
+      return "sunbeam";
+    }
+  })();
 const buildEnv = process.env.NODE_ENV ?? "production";
 const isProd = buildEnv === "production";
 // Interface to listen on, shared with the other servers in the dev stack.
@@ -181,7 +190,7 @@ export default defineConfig({
       css: true,
     },
   },
-  plugins: [pluginReact(), pluginLess(), pluginSass()],
+  plugins: [pluginReact(), pluginLess(), pluginSass(), pluginNodePolyfill()],
   tools: {
     // We use html-webpack-plugin directly instead of relying in @rsbuild/core
     // html plugin so it works with StudioHtmlPlugin.

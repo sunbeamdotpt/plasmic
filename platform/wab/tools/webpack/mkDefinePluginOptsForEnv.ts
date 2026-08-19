@@ -45,7 +45,7 @@ export function mkDefinePluginOptsForEnv(
         }
         return [envKey, JSON.stringify(processEnvValue)];
       } else if (value === OPTIONAL_VAR) {
-        if (process.env.NODE_ENV === "production" && !processEnvValue) {
+        if (process.env.NODE_ENV === "production" && processEnvValue === undefined) {
           throw new Error(`process.env.${key} missing in production build`);
         }
         return [

@@ -1945,9 +1945,10 @@ export async function createApp(
 
   addMiddlewares(app, config, opts);
 
-  if (!config.production) {
-    addStaticRoutes(app);
-  }
+  // Serve the built Studio frontend static assets from this server. In the
+  // original Plasmic SaaS these are served by a separate static host/CDN, but
+  // for the on-site single-image deployment the backend is the only server.
+  addStaticRoutes(app);
 
   addRoutes(app);
 

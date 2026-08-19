@@ -17,6 +17,8 @@
 # ERR_STREAM_PREMATURE_CLOSE. Bump deliberately once a fixed 24.17.x+ is verified.
 FROM node:24.16.0-alpine AS builder
 
+ARG BUILD_COMMIT_HASH=sunbeam
+
 ENV PUPPETEER_SKIP_DOWNLOAD=1
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=1
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
@@ -67,9 +69,25 @@ RUN pnpm install --frozen-lockfile --prefer-offline
 # nothing).
 RUN pnpm --filter "loader-bundle-env..." --filter "@plasmicapp/loader-html-hydrate..." build
 
+# Build the static bundles that the Studio frontend embeds.
+# live-frame and react-web-bundle are yarn-managed siblings, not part of the
+# pnpm workspace, so they are built with their own lockfiles.
+RUN pnpm --filter "canvas-packages..." build
+RUN cd /platform/live-frame && corepack yarn install --frozen-lockfile && NODE_ENV=production yarn build
+RUN cd /platform/react-web-bundle && corepack yarn install --frozen-lockfile && NODE_ENV=production yarn build
+
 # Code generation (peg parsers, model classes, style tokens, vendored CSS).
 WORKDIR /platform/wab
 RUN mkdir -p src/wab/gen && make
+
+# Build the Studio frontend static assets so the backend can serve them at /.
+RUN pnpm build-css && \
+    NODE_OPTIONS='--max-old-space-size=16384' \
+    PUBLIC_URL=/ STATIC_URL=/ \
+    POSTHOG_API_KEY='' POSTHOG_HOST='' POSTHOG_REVERSE_PROXY_HOST='' \
+    SENTRY_DSN='' SENTRY_ORG_ID='' SENTRY_PROJECT_ID='' \
+    STRIPE_PUBLISHABLE_KEY='' \
+    pnpm build
 
 # Re-resolve without devDependencies for the runtime image, and only for the
 # three packages that actually ship in it — this keeps canvas-packages',

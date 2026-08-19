@@ -32,11 +32,9 @@ wab/public/static/js
 Dockerfile*
 .dockerignore
 
-# Packages not needed by the WAB production image
+# Packages not copied into the WAB production image runner, but whose source
+# is needed in the builder stage to build the frontend static assets.
 host-test
 integration-tests
-live-frame
 loader-tests
 react-renderer
-react-web-bundle
-sub
