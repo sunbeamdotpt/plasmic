@@ -22,7 +22,7 @@ export interface QueryBuilderCore<Ctx extends any[]> {
    * Return a @react-awesome-query-builder/core `Config` that will be merged
    * with Plasmic's built-in config.
    *
-   * https://github.com/plasmicapp/plasmic/blob/master/platform/wab/src/wab/client/components/QueryBuilder/QueryBuilderConfig.tsx
+   * https://github.com/plasmicapp/plasmic/blob/mainline/platform/wab/src/wab/client/components/QueryBuilder/QueryBuilderConfig.tsx
    *
    * At a minimum, this should return fields and their types.
    * For configuration options, see react-awesome-query-builder docs.

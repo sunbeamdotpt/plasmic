@@ -61,7 +61,7 @@ setup("configure global dev flags", async ({ request, baseURL }) => {
         sectionLabel: "Effects",
         codeName: "react-awesome-reveal",
         codeLink:
-          "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/react-awesome-reveal",
+          "https://github.com/plasmicapp/plasmic/tree/mainline/plasmicpkgs/react-awesome-reveal",
         items: [
           {
             type: "hostless-component",
@@ -78,7 +78,7 @@ setup("configure global dev flags", async ({ request, baseURL }) => {
         sectionLabel: "Layout",
         codeName: "plasmic-nav",
         codeLink:
-          "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/plasmic-nav",
+          "https://github.com/plasmicapp/plasmic/tree/mainline/plasmicpkgs/plasmic-nav",
         items: [
           {
             type: "hostless-component",
@@ -96,7 +96,7 @@ setup("configure global dev flags", async ({ request, baseURL }) => {
         hiddenWhenInstalled: true,
         codeName: "plasmic-rich-components",
         codeLink:
-          "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/plasmic-rich-components",
+          "https://github.com/plasmicapp/plasmic/tree/mainline/plasmicpkgs/plasmic-rich-components",
         items: [
           {
             type: "hostless-component",
@@ -124,7 +124,7 @@ setup("configure global dev flags", async ({ request, baseURL }) => {
         hiddenWhenInstalled: true,
         codeName: "antd5-form",
         codeLink:
-          "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/plasmic-rich-components",
+          "https://github.com/plasmicapp/plasmic/tree/mainline/plasmicpkgs/plasmic-rich-components",
         items: [
           {
             type: "hostless-component",

@@ -27,9 +27,9 @@ jobs:
           PERSONAL_ACCESS_TOKEN: ${{ secrets.CLA_SIGNATURES_GITHUB_PAT }}
         with:
           path-to-signatures: "signatures/version1/cla.json"
-          path-to-document: "https://github.com/plasmicapp/plasmic/blob/master/docs/contributing/individual-cla.md" # e.g. a CLA or a DCO document
+          path-to-document: "https://github.com/plasmicapp/plasmic/blob/mainline/docs/contributing/individual-cla.md" # e.g. a CLA or a DCO document
           # branch should not be protected
-          branch: "master"
+          branch: "mainline"
           #          allowlist: user1,bot*
 
           # the followings are the optional inputs - If the optional inputs are not given, then default values will be taken
@@ -40,7 +40,7 @@ jobs:
           custom-notsigned-prcomment: |
             Thank you for your submission, we really appreciate it! ❤️
 
-            Like many open-source projects, we ask that you sign our [Individual Contributor License Agreement](https://github.com/plasmicapp/plasmic/blob/master/docs/contributing/individual-cla.md) before we can accept your contribution. If you are contributing on behalf of a company, please contact us at help@plasmic.app to sign a [Corporate Contributor License Agreement](https://github.com/plasmicapp/plasmic/blob/master/docs/contributing/corporate-cla.md).
+            Like many open-source projects, we ask that you sign our [Individual Contributor License Agreement](https://github.com/plasmicapp/plasmic/blob/mainline/docs/contributing/individual-cla.md) before we can accept your contribution. If you are contributing on behalf of a company, please contact us at help@plasmic.app to sign a [Corporate Contributor License Agreement](https://github.com/plasmicapp/plasmic/blob/mainline/docs/contributing/corporate-cla.md).
 
             You can sign the individual CLA by posting a comment with the below text.
           custom-pr-sign-comment: I have read, agree to, and hereby sign Plasmic's Individual Contributor License Agreement
