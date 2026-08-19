@@ -1,6 +1,10 @@
 import { setupCustomPassport } from "@/wab/server/auth/custom-passport-cfg";
 import { createUserFull } from "@/wab/server/auth/routes";
-import { Config } from "@/wab/server/config";
+import {
+  Config,
+  getOidcConfig,
+  OidcClaimMappings,
+} from "@/wab/server/config";
 import { DbMgr, SUPER_USER } from "@/wab/server/db/DbMgr";
 import { OauthTokenProvider, User } from "@/wab/server/entities/Entities";
 import "@/wab/server/extensions";
@@ -30,12 +34,14 @@ import {
 import { isGoogleAuthRequiredEmailDomain } from "@/wab/shared/devflag-utils";
 import { DevFlagsType } from "@/wab/shared/devflags";
 import { getPublicUrl } from "@/wab/shared/urls";
+import axios from "axios";
 import { Request } from "express-serve-static-core";
-import { omit } from "lodash";
+import { get, omit } from "lodash";
 import passport, { Profile } from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import passportLocal from "passport-local";
 import OAuth2Strategy from "passport-oauth2";
+import OpenIDConnectStrategy from "passport-openidconnect";
 import refresh from "passport-oauth2-refresh";
 import { getManager } from "typeorm";
 import * as util from "util";
@@ -118,6 +124,60 @@ export async function setupPassport(
         })
     )
   );
+
+  /**
+   * Sign in using a global OIDC provider (hosted / on-site deployments).
+   */
+  const oidcConfig = getOidcConfig(config);
+  if (oidcConfig) {
+    passport.use(
+      "oidc",
+      new OpenIDConnectStrategy(
+        {
+          issuer: oidcConfig.issuer || oidcConfig.authorizationURL,
+          authorizationURL: oidcConfig.authorizationURL,
+          tokenURL: oidcConfig.tokenURL,
+          userInfoURL: oidcConfig.userInfoURL,
+          clientID: oidcConfig.clientID,
+          clientSecret: oidcConfig.clientSecret,
+          callbackURL: oidcConfig.callbackURL,
+          scope: oidcConfig.scope,
+          passReqToCallback: true,
+        },
+        ((
+          req: Request,
+          _issuer: string,
+          profile: Profile,
+          _context: any,
+          _idToken: any,
+          accessToken: any,
+          refreshToken: string,
+          _params: any,
+          done: any
+        ) => {
+          asyncToCallback(done, async () => {
+            if (oidcConfig.kratosAdminUrl) {
+              await enrichOidcProfileWithKratosTraits(
+                profile,
+                oidcConfig.kratosAdminUrl
+              );
+            }
+            const user = await upsertOauthUser(
+              req,
+              "oidc",
+              accessToken as string,
+              refreshToken,
+              profile,
+              {
+                claimMappings: oidcConfig.claimMappings,
+              }
+            );
+            return user;
+          });
+        }) as OpenIDConnectStrategy.VerifyFunction
+      )
+    );
+  }
 
   passport.use(
     "sso",
@@ -289,11 +349,12 @@ export async function upsertOauthUser(
   opts: {
     requireRefreshToken?: boolean;
     ssoConfigId?: SsoConfigId;
+    claimMappings?: OidcClaimMappings;
   }
 ): Promise<User> {
   const mgr = superDbMgr(req);
 
-  const userFields = deriveOAuthUserFields(profile);
+  const userFields = deriveOAuthUserFields(profile, opts.claimMappings);
 
   const email = userFields.email;
 
@@ -331,7 +392,7 @@ export async function upsertOauthUser(
     await mgr.clearUserPassword(user.id);
   }
 
-  await updateUserFromProfile(mgr, user.id, profile);
+  await updateUserFromProfile(mgr, user.id, profile, opts.claimMappings);
 
   // refreshToken may not be set.  See the /callback handler for more
   // details on how we handle this.
@@ -340,7 +401,7 @@ export async function upsertOauthUser(
       user.id,
       provider,
       { accessToken, refreshToken },
-      (profile as any)._json,
+      (profile as any)._json ?? (profile as any)._raw ?? profile,
       opts.ssoConfigId
     );
   }
@@ -356,9 +417,10 @@ export async function upsertOauthUser(
 export async function updateUserFromProfile(
   mgr: DbMgr,
   userId: UserId,
-  profile: Profile
+  profile: Profile,
+  claimMappings?: OidcClaimMappings
 ) {
-  const userFields = deriveOAuthUserFields(profile);
+  const userFields = deriveOAuthUserFields(profile, claimMappings);
   return await mgr.updateUser({
     id: userId,
     // Update all non-email user fields
@@ -366,20 +428,89 @@ export async function updateUserFromProfile(
   });
 }
 
-function deriveOAuthUserFields(profile: any) {
+/**
+ * For on-site Ory/Kratos deployments the OIDC userinfo only exposes a small
+ * set of claims (email, identity_id, etc.). The identity traits that contain
+ * names, profile pictures, and other employee data live in Kratos. Fetch the
+ * identity via the Kratos Admin API and merge its traits into the profile so
+ * the configured claimMappings can resolve them.
+ */
+async function enrichOidcProfileWithKratosTraits(
+  profile: any,
+  kratosAdminUrl: string
+) {
+  const identityId =
+    profile?._json?.identity_id ??
+    profile?._json?.identityId ??
+    profile?._json?.sub ??
+    profile?._json?.id ??
+    profile?.id ??
+    profile?.sub;
+  if (!identityId) {
+    logger().warn("OIDC profile is missing identity_id; cannot enrich Kratos traits");
+    return;
+  }
+
+  try {
+    const baseUrl = kratosAdminUrl.replace(/\/$/, "");
+    const { data } = await axios.get(
+      `${baseUrl}/admin/identities/${identityId}`,
+      { timeout: 5000 }
+    );
+    const traits = data?.traits;
+    if (traits && typeof traits === "object") {
+      profile.traits = traits;
+      if (profile._json) {
+        profile._json.traits = traits;
+      }
+      logger().info("Enriched OIDC profile with Kratos traits", {
+        identityId,
+        traitKeys: Object.keys(traits),
+      });
+    }
+  } catch (err) {
+    logger().warn("Failed to enrich OIDC profile with Kratos traits", {
+      identityId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+function deriveOAuthUserFields(
+  profile: any,
+  claimMappings?: OidcClaimMappings
+) {
+  const getClaim = (path?: string, fallback?: any) => {
+    if (!path) {
+      return fallback;
+    }
+    const value = get(profile, path, fallback);
+    return value === undefined ? fallback : value;
+  };
+
   const email: string | undefined =
-    profile?.email ?? profile?.emails?.[0]?.value;
+    getClaim(claimMappings?.email) ??
+    profile?.email ??
+    profile?.emails?.[0]?.value;
   const emailUser = email?.split("@")[0];
   const firstName: string =
+    getClaim(claimMappings?.firstName) ??
     profile?.name?.givenName ??
     profile?.givenName ??
     profile?.given_name ??
     emailUser;
   const lastName: string | undefined =
-    profile?.name?.familyName ?? profile?.familyName ?? profile?.family_name;
-  const avatarUrl = maybes(profile?.photos)((x) => x[0])((x) => x.value)();
+    getClaim(claimMappings?.lastName) ??
+    profile?.name?.familyName ??
+    profile?.familyName ??
+    profile?.family_name;
+  const avatarUrl =
+    getClaim(claimMappings?.avatarUrl) ??
+    maybes(profile?.photos)((x) => x[0])((x) => x.value)();
   const emailVerified: boolean | undefined =
-    profile?.emailVerified ?? profile?.email_verified;
+    getClaim(claimMappings?.emailVerified) ??
+    profile?.emailVerified ??
+    profile?.email_verified;
   return {
     email,
     firstName,

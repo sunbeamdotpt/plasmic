@@ -681,6 +681,7 @@ export type OauthTokenProvider =
   | "google"
   | "okta"
   | "ping"
+  | "oidc"
   | "airtable"
   | "google-sheets";
 

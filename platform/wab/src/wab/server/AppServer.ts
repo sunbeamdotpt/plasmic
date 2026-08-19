@@ -17,6 +17,8 @@ import { getConnection } from "typeorm";
 import v8 from "v8";
 // API keys and Passport configuration
 import { setupPassport } from "@/wab/server/auth/passport-cfg";
+
+let promMetricsMiddlewareAdded = false;
 import * as authRoutes from "@/wab/server/auth/routes";
 import { apiAuth } from "@/wab/server/auth/routes";
 import { doLogout } from "@/wab/server/auth/util";
@@ -343,6 +345,7 @@ const isCsrfFreeRoute = (pathname: string, config: Config) => {
     pathname.match("/api/v1/projects/[^/]+$") ||
     pathname.match("/api/v1/projects/[^/]+/code/") ||
     pathname.match("/api/v1/auth/sso/.*/consume") ||
+  pathname === "/api/v1/auth/oidc/callback" ||
     pathname.includes("/api/v1/app-auth/user") ||
     pathname.includes("/api/v1/app-auth/userinfo") ||
     pathname.includes("/api/v1/app-auth/token") ||
@@ -505,29 +508,33 @@ export function addPromMetricsMiddleware(app: express.Application) {
     })
   );
 
-  // Handles /metrics
-  app.use(
-    promMetrics({
-      customLabels: {
-        route: null,
-        projectId: null,
-      },
-      includeMethod: true,
-      includeStatusCode: true,
-      includePath: true,
-      urlValueParser: {
-        extraMasks: [METRICS_PATH_ID_MASK],
-      },
-      transformLabels: (labels, req, _res) => {
-        labels.route = req.route?.path;
-        Object.assign(labels, req.promLabels ?? {});
-      },
-      promClient: {
-        collectDefaultMetrics: {},
-      },
-      buckets: DEFAULT_HISTOGRAM_BUCKETS,
-    })
-  );
+  // Handles /metrics. The middleware registers global prom-client metrics, so
+  // guard against adding it twice when multiple app instances run in one process.
+  if (!promMetricsMiddlewareAdded) {
+    promMetricsMiddlewareAdded = true;
+    app.use(
+      promMetrics({
+        customLabels: {
+          route: null,
+          projectId: null,
+        },
+        includeMethod: true,
+        includeStatusCode: true,
+        includePath: true,
+        urlValueParser: {
+          extraMasks: [METRICS_PATH_ID_MASK],
+        },
+        transformLabels: (labels, req, _res) => {
+          labels.route = req.route?.path;
+          Object.assign(labels, req.promLabels ?? {});
+        },
+        promClient: {
+          collectDefaultMetrics: {},
+        },
+        buckets: DEFAULT_HISTOGRAM_BUCKETS,
+      })
+    );
+  }
 }
 
 function addMiddlewares(
@@ -1233,6 +1240,12 @@ export function addMainAppServerRoutes(
   app.get(
     "/api/v1/oauth2/google/callback",
     withNext(authRoutes.googleCallback)
+  );
+  app.get("/api/v1/auth/oidc/config", authRoutes.getOidcPublicConfig);
+  app.get("/api/v1/auth/oidc", authRoutes.oidcLogin);
+  app.get(
+    "/api/v1/auth/oidc/callback",
+    withNext(authRoutes.oidcCallback)
   );
   app.get("/api/v1/auth/sso/test", authRoutes.isValidSsoEmail);
   app.get("/api/v1/auth/sso/:tenantId/login", authRoutes.ssoLogin);

@@ -33,6 +33,10 @@ import {
   UnauthorizedError,
 } from "@/wab/shared/ApiErrors/errors";
 import {
+  isOidcAdminBypassEmail,
+  isOidcEnabled,
+} from "@/wab/server/config";
+import {
   ConfirmEmailRequest,
   ConfirmEmailResponse,
   ForgotPasswordResponse,
@@ -64,11 +68,30 @@ import passport from "passport";
 import { AuthenticateOptionsGoogle } from "passport-google-oauth20";
 import { IVerifyOptions } from "passport-local";
 
+function isOidcBlockingLocalAuth(req: Request, email: string): boolean {
+  const oidc = req.config.oidc;
+  return (
+    !!oidc && oidc.disableOtherAuth && !isOidcAdminBypassEmail(req.config, email)
+  );
+}
+
 export function csrf(req: Request, res: Response, _next: NextFunction) {
   res.json({ csrf: res.locals._csrf });
 }
 export async function login(req: Request, res: Response, next: NextFunction) {
-  logger().info(`logging in as email: ${req.body.email}`);
+  const email = req.body.email;
+  logger().info(`logging in as email: ${email}`);
+
+  if (isOidcBlockingLocalAuth(req, email)) {
+    res.json(
+      ensureType<LoginResponse>({
+        status: false,
+        reason: "OidcOnlyError",
+      })
+    );
+    return;
+  }
+
   await new Promise<void>((resolve) =>
     passport.authenticate(
       "local",
@@ -184,6 +207,16 @@ export async function signUp(req: Request, res: Response, next: NextFunction) {
   const mgr = superDbMgr(req);
 
   await mgr.logSignUpAttempt(email);
+
+  if (isOidcBlockingLocalAuth(req, email)) {
+    res.json(
+      ensureType<SignUpResponse>({
+        status: false,
+        reason: "OidcOnlyError",
+      })
+    );
+    return;
+  }
 
   if (isGoogleAuthRequiredEmailDomain(email, req.devflags)) {
     // plasmic.app users should sign up with Google.
@@ -570,9 +603,14 @@ async function handleOauthCallback(
   res: Response,
   next: NextFunction,
   {
+    strategy,
     ssoConfig,
     beforeLogin,
   }: {
+    /**
+     * Passport strategy to use. Defaults to "google".
+     */
+    strategy?: "google" | "sso" | "oidc";
     /**
      * Callback to do something before logging the user in.
      *
@@ -583,12 +621,12 @@ async function handleOauthCallback(
     ssoConfig?: SsoConfig;
   }
 ) {
-  const strategy = ssoConfig ? "sso" : "google";
-  const provider = ssoConfig ? ssoConfig.provider : "google";
-  const logPrefix = `auth: ${strategy}/${provider}`;
+  const resolvedStrategy = strategy ?? (ssoConfig ? "sso" : "google");
+  const provider = ssoConfig ? ssoConfig.provider : resolvedStrategy;
+  const logPrefix = `auth: ${resolvedStrategy}/${provider}`;
   await new Promise<void>((resolve) =>
     passport.authenticate(
-      strategy,
+      resolvedStrategy,
       async (err: Error, user: User, info: IVerifyOptions) =>
         (async () => {
           logger().error(`${logPrefix} AUTH CALLBACK`, { err, user, info });
@@ -768,6 +806,37 @@ export async function ssoCallback(
   const ssoConfig = await extractSsoConfig(req);
   await handleOauthCallback(req, res, next, {
     ssoConfig,
+  });
+}
+
+export async function oidcLogin(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  await new Promise<void>((resolve) =>
+    passport.authenticate("oidc", {}, () => resolve())(req, res, next)
+  );
+}
+
+export async function oidcCallback(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  await handleOauthCallback(req, res, next, { strategy: "oidc" });
+}
+
+export async function getOidcPublicConfig(req: Request, res: Response) {
+  const oidc = req.config.oidc;
+  if (!oidc) {
+    res.json({ enabled: false });
+    return;
+  }
+  res.json({
+    enabled: true,
+    buttonLabel: oidc.buttonLabel,
+    disableOtherAuth: oidc.disableOtherAuth,
   });
 }
 

@@ -46,3 +46,7 @@ dist/
 # Playwright test results
 test-results/
 playwright-report/
+
+# Network/debug artifacts
+*.har
+secrets.json

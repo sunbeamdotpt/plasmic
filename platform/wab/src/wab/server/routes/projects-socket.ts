@@ -31,7 +31,7 @@ import { modelSchemaHash } from "@/wab/shared/model/classes-metas";
 import { Request, Response } from "express";
 import { Server } from "http";
 import { get } from "lodash";
-import { Gauge } from "prom-client";
+import { Gauge, register } from "prom-client";
 import { Server as SocketIoServer, Socket as UntypedSocket } from "socket.io";
 import { getConnection } from "typeorm";
 
@@ -75,52 +75,62 @@ export class ProjectsSocket {
       await this.onConnect(socket);
     });
 
-    // Track number of connected sockets
+    // Track number of connected sockets. These are global singletons; guard
+    // against re-registration when multiple ProjectsSocket instances are
+    // created in the same process (e.g. in tests that spin up several backends).
     const self = this;
-    new Gauge({
-      name: `projects_room_sockets`,
-      labelNames: ["app"],
-      help: "Number of active sockets for ProjectsSocket in active rooms",
-      collect() {
-        this.set(
-          { app: appName },
-          Array.from(self.roomToSockets.values()).reduce(
-            (a, b) => a + b.size,
-            0
-          )
-        );
-      },
-    });
-    new Gauge({
-      name: `projects_session_sockets`,
-      labelNames: ["app"],
-      help: "Number of active sockets for ProjectsSocket in active sessions",
-      collect() {
-        this.set(
-          { app: appName },
-          Array.from(self.sessionIdToSockets.values()).reduce(
-            (a, b) => a + b.size,
-            0
-          )
-        );
-      },
-    });
-    new Gauge({
-      name: `projects_rooms`,
-      labelNames: ["app"],
-      help: "Number of active rooms for ProjectsSocket",
-      collect() {
-        this.set({ app: appName }, self.roomToSockets.size);
-      },
-    });
-    new Gauge({
-      name: `projects_sessions`,
-      labelNames: ["app"],
-      help: "Number of active sessions for ProjectsSocket",
-      collect() {
-        this.set({ app: appName }, self.sessionIdToSockets.size);
-      },
-    });
+    if (!register.getSingleMetric("projects_room_sockets")) {
+      new Gauge({
+        name: `projects_room_sockets`,
+        labelNames: ["app"],
+        help: "Number of active sockets for ProjectsSocket in active rooms",
+        collect() {
+          this.set(
+            { app: appName },
+            Array.from(self.roomToSockets.values()).reduce(
+              (a, b) => a + b.size,
+              0
+            )
+          );
+        },
+      });
+    }
+    if (!register.getSingleMetric("projects_session_sockets")) {
+      new Gauge({
+        name: `projects_session_sockets`,
+        labelNames: ["app"],
+        help: "Number of active sockets for ProjectsSocket in active sessions",
+        collect() {
+          this.set(
+            { app: appName },
+            Array.from(self.sessionIdToSockets.values()).reduce(
+              (a, b) => a + b.size,
+              0
+            )
+          );
+        },
+      });
+    }
+    if (!register.getSingleMetric("projects_rooms")) {
+      new Gauge({
+        name: `projects_rooms`,
+        labelNames: ["app"],
+        help: "Number of active rooms for ProjectsSocket",
+        collect() {
+          this.set({ app: appName }, self.roomToSockets.size);
+        },
+      });
+    }
+    if (!register.getSingleMetric("projects_sessions")) {
+      new Gauge({
+        name: `projects_sessions`,
+        labelNames: ["app"],
+        help: "Number of active sessions for ProjectsSocket",
+        collect() {
+          this.set({ app: appName }, self.sessionIdToSockets.size);
+        },
+      });
+    }
   }
 
   attach(server: Server) {

@@ -30,3 +30,10 @@ to-import-into-substack.csv
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# OIDC / auth debug artifacts
+cookie.txt
+*.har
+secrets.json
+/playwright/test-results/
+/playwright/debug-auth.*

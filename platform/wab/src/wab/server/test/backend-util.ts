@@ -1,8 +1,13 @@
 import { runAppServer } from "@/wab/server/app-backend-real";
-import { closeDbConnections, ensureDbConnection } from "@/wab/server/db/DbCon";
+import {
+  closeDbConnections,
+  ensureDbConnection,
+  ensureDbConnections,
+} from "@/wab/server/db/DbCon";
 import { initDb } from "@/wab/server/db/DbInitUtil";
 import { DbMgr, SUPER_USER, normalActor } from "@/wab/server/db/DbMgr";
 import { Project, User } from "@/wab/server/entities/Entities";
+import { OidcConfig } from "@/wab/server/config";
 import { ensure, range } from "@/wab/shared/common";
 import getPort from "get-port";
 import { customAlphabet } from "nanoid";
@@ -86,18 +91,25 @@ export async function getTeamAndWorkspace(db1: DbMgr) {
  * cleanup, allowing you to inspect the database after the test. The worker
  * suffix keeps test files running in parallel off each other's database.
  */
+function dbUri(user: string, database: string) {
+  const password = process.env.WAB_DBPASSWORD;
+  return password
+    ? `postgresql://${user}:${password}@localhost/${database}`
+    : `postgresql://${user}@localhost/${database}`;
+}
+
 export async function createDatabase(name = "test") {
   const isCI = !!process.env.CI;
   const dbname = isCI
     ? dbNameGen(name)
     : `wab_dev_${name}${process.env.VITEST_POOL_ID ?? ""}`;
   const sucon = await ensureDbConnection(
-    "postgresql://superwab@localhost/postgres",
+    dbUri("superwab", "postgres"),
     "super"
   );
   await sucon.query("select 1");
-  await sucon.query(`drop database if exists ${dbname} with (force);`);
-  await sucon.query(`create database ${dbname} owner wab;`);
+  await sucon.query(`drop database if exists "${dbname}" with (force);`);
+  await sucon.query(`create database "${dbname}" owner wab;`);
   // pg_auth_members is a cluster-wide catalog, so parallel workers issuing this
   // same grant race on its unique index. Losing the race means it's granted.
   try {
@@ -107,7 +119,7 @@ export async function createDatabase(name = "test") {
       throw e;
     }
   }
-  const dburi = `postgresql://wab@localhost/${dbname}`;
+  const dburi = dbUri("wab", dbname);
   const con = await ensureDbConnection(dburi, dbname);
   await con.synchronize();
   await con.transaction(async (em) => {
@@ -121,17 +133,25 @@ export async function createDatabase(name = "test") {
     cleanup: async () => {
       await con.close();
       if (isCI) {
-        await sucon.query(`drop database if exists ${dbname} with (force);`);
+        await sucon.query(`drop database if exists "${dbname}" with (force);`);
       }
-      await sucon.close();
+      // Leave the shared "super" connection open so parallel/interleaved test
+      // suites don't close each other's maintenance connection.
     },
   };
 }
+
+interface ActiveBackend {
+  dburi: string;
+}
+
+const activeBackends: ActiveBackend[] = [];
 
 export async function createBackend(
   dburi: string,
   opts?: {
     preferredPorts?: number[];
+    oidc?: OidcConfig;
   }
 ) {
   const port = await getPort(
@@ -161,8 +181,11 @@ export async function createBackend(
         keepAliveTimeoutMs: 60000,
         genericWorkerPoolSize: 1,
         loaderWorkerPoolSize: 1,
+        ...(opts?.oidc ? { oidc: opts.oidc } : {}),
       });
 
+      const backend: ActiveBackend = { dburi };
+      activeBackends.push(backend);
       return {
         host: `http://localhost:${port}`,
         cleanup: async () => {
@@ -177,7 +200,20 @@ export async function createBackend(
               });
             });
           } finally {
-            await closeDbConnections();
+            const idx = activeBackends.indexOf(backend);
+            if (idx >= 0) {
+              activeBackends.splice(idx, 1);
+            }
+            if (activeBackends.length === 0) {
+              await closeDbConnections();
+            } else {
+              // Re-establish connection pools for any remaining backends;
+              // creating a backend for a different DB closes the shared pools,
+              // so the earlier backend(s) need their pools restored.
+              for (const remaining of activeBackends) {
+                await ensureDbConnections(remaining.dburi);
+              }
+            }
           }
         },
       };

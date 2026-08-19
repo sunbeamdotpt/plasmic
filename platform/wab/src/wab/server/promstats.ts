@@ -1,6 +1,6 @@
 import { MIGRATION_POOL_NAME } from "@/wab/server/db/DbCon";
 import { Request, Response } from "express-serve-static-core";
-import { Counter, Gauge, Histogram } from "prom-client";
+import { Counter, Gauge, Histogram, register } from "prom-client";
 import { getConnection } from "typeorm";
 import type { WorkerPool } from "workerpool";
 
@@ -166,41 +166,49 @@ new Gauge({
 });
 
 export function trackPostgresPool(app: string) {
-  const pgPoolTotal = new Gauge({
-    name: `pg_pool_total`,
-    labelNames: ["pool", "app"],
-    help: `Number of total connections in client pool`,
-    collect() {
-      for (const conName of ["default", MIGRATION_POOL_NAME]) {
-        const pool = getPgPool(conName);
-        this.set({ pool: conName, app }, pool.totalCount);
-      }
-    },
-  });
+  // These are global singletons; guard against re-registration when multiple
+  // app instances run in one process (e.g. in tests that spin up several backends).
+  if (!register.getSingleMetric("pg_pool_total")) {
+    new Gauge({
+      name: `pg_pool_total`,
+      labelNames: ["pool", "app"],
+      help: `Number of total connections in client pool`,
+      collect() {
+        for (const conName of ["default", MIGRATION_POOL_NAME]) {
+          const pool = getPgPool(conName);
+          this.set({ pool: conName, app }, pool.totalCount);
+        }
+      },
+    });
+  }
 
-  const pgPoolIdle = new Gauge({
-    name: `pg_pool_idle`,
-    labelNames: ["pool", "app"],
-    help: `Number of idle connections in client pool`,
-    collect() {
-      for (const conName of ["default", MIGRATION_POOL_NAME]) {
-        const pool = getPgPool(conName);
-        this.set({ pool: conName, app }, pool.idleCount);
-      }
-    },
-  });
+  if (!register.getSingleMetric("pg_pool_idle")) {
+    new Gauge({
+      name: `pg_pool_idle`,
+      labelNames: ["pool", "app"],
+      help: `Number of idle connections in client pool`,
+      collect() {
+        for (const conName of ["default", MIGRATION_POOL_NAME]) {
+          const pool = getPgPool(conName);
+          this.set({ pool: conName, app }, pool.idleCount);
+        }
+      },
+    });
+  }
 
-  const pgWaiting = new Gauge({
-    name: `pg_pool_waiting`,
-    labelNames: ["pool", "app"],
-    help: `Number of waiting requests for client pool`,
-    collect() {
-      for (const conName of ["default", MIGRATION_POOL_NAME]) {
-        const pool = getPgPool(conName);
-        this.set({ pool: conName, app }, pool.waitingCount);
-      }
-    },
-  });
+  if (!register.getSingleMetric("pg_pool_waiting")) {
+    new Gauge({
+      name: `pg_pool_waiting`,
+      labelNames: ["pool", "app"],
+      help: `Number of waiting requests for client pool`,
+      collect() {
+        for (const conName of ["default", MIGRATION_POOL_NAME]) {
+          const pool = getPgPool(conName);
+          this.set({ pool: conName, app }, pool.waitingCount);
+        }
+      },
+    });
+  }
 }
 
 function getPgPool(conName: string) {

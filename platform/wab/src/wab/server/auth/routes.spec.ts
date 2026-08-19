@@ -15,9 +15,12 @@ describe("auth", () => {
   let sudoDbMgr: DbMgr;
   let baseURL: string;
   let cleanup: () => Promise<void>;
+  let dburi: string;
 
   beforeAll(async () => {
-    const { dburi, con, cleanup: cleanupDatabase } = await createDatabase();
+    const { dburi: createdDbUri, con, cleanup: cleanupDatabase } =
+      await createDatabase();
+    dburi = createdDbUri;
     sudoDbMgr = new DbMgr(con.createEntityManager(), SUPER_USER);
     await sudoDbMgr.setDevFlagOverrides(
       JSON.stringify({ blockedSignupDomains: ["bad.com", "bad.good.com"] })
@@ -249,6 +252,108 @@ describe("auth", () => {
       await expect(api.grantRevoke({ grants, revokes: [] })).rejects.toThrow(
         BadRequestError
       );
+    });
+  });
+
+  describe("oidc", () => {
+    let oidcApi: SharedApiTester;
+    let oidcBaseURL: string;
+    let oidcCleanup: () => Promise<void>;
+    let oidcSudoDbMgr: DbMgr;
+
+    beforeAll(async () => {
+      oidcSudoDbMgr = sudoDbMgr;
+      const adminEmail = "admin@example.com";
+      // Re-use the main test database so the two backends don't fight over the
+      // global TypeORM connection pools.
+      const { host, cleanup: cleanupBackend } = await createBackend(dburi, {
+        oidc: {
+          issuer: "https://idp.example.com",
+          authorizationURL: "https://idp.example.com/oauth2/authorize",
+          tokenURL: "https://idp.example.com/oauth2/token",
+          userInfoURL: "https://idp.example.com/oauth2/userinfo",
+          clientID: "test-client-id",
+          clientSecret: "test-client-secret",
+          callbackURL: "http://localhost:3003/api/v1/auth/oidc/callback",
+          scope: "openid email profile",
+          buttonLabel: "Sign in with Test IdP",
+          disableOtherAuth: true,
+          adminEmailsBypass: [adminEmail],
+        },
+      });
+      oidcBaseURL = `${host}/api/v1`;
+
+      oidcCleanup = async () => {
+        await cleanupBackend();
+      };
+    });
+
+    beforeEach(async () => {
+      oidcApi = new SharedApiTester(oidcBaseURL);
+      await oidcApi.refreshCsrfToken();
+    });
+
+    afterEach(async () => {
+      await oidcApi.dispose();
+    });
+
+    afterAll(async () => {
+      await oidcCleanup();
+    });
+
+    it("exposes public OIDC config", async () => {
+      const res = await oidcApi.get("/auth/oidc/config");
+      expect(res).toMatchObject({
+        enabled: true,
+        buttonLabel: "Sign in with Test IdP",
+        disableOtherAuth: true,
+      });
+    });
+
+    it("rejects local login for non-admin emails", async () => {
+      const res = await oidcApi.login({
+        email: "user@example.com",
+        password: "SuperStrongPassword!!",
+      });
+      expect(res).toEqual({
+        status: false,
+        reason: "OidcOnlyError",
+      });
+    });
+
+    it("rejects local sign-up for non-admin emails", async () => {
+      const res = await oidcApi.signUp({
+        email: "user@example.com",
+        password: "SuperStrongPassword!!",
+        firstName: "GivenName",
+        lastName: "FamilyName",
+      });
+      expect(res).toEqual({
+        status: false,
+        reason: "OidcOnlyError",
+      });
+    });
+
+    it("allows local login for admin bypass emails", async () => {
+      const adminEmail = "admin@example.com";
+      const password = "SuperStrongPassword!!";
+      const dbUser = await oidcSudoDbMgr.createUser({
+        email: adminEmail,
+        firstName: "Admin",
+        lastName: "User",
+        password,
+        needsTeamCreationPrompt: false,
+      });
+      await oidcSudoDbMgr.markEmailAsVerified(dbUser);
+
+      const res = await oidcApi.login({
+        email: adminEmail,
+        password,
+      });
+      expect(res).toMatchObject({
+        status: true,
+        user: { email: adminEmail },
+      });
     });
   });
 

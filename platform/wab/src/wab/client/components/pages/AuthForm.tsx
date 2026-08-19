@@ -32,6 +32,12 @@ type Mode =
   | "reset password"
   | "sso";
 
+interface OidcPublicConfig {
+  enabled: boolean;
+  buttonLabel?: string;
+  disableOtherAuth?: boolean;
+}
+
 interface AuthFormProps {
   mode: "sign in" | "sign up";
   onLoggedIn: () => void;
@@ -204,117 +210,156 @@ export function AuthForm({ mode, onLoggedIn }: AuthFormProps) {
     },
   });
 
+  const { data: oidcConfig } = useSWR<OidcPublicConfig>(
+    "/auth/oidc/config",
+    async (url) => nonAuthCtx.api.get(url)
+  );
+
+  const isOidcOnly =
+    oidcConfig?.enabled && oidcConfig?.disableOtherAuth !== false;
+
+  const { isWaiting, open } = useAuthPopup({
+    onSuccess: spawnWrapper(async () => {
+      await nonAuthCtx.api.refreshCsrfToken();
+      const { user } = await nonAuthCtx.api.getSelfInfo();
+      setSelfInfo(user);
+    }),
+    onFailure: (reason) => {
+      setOauthFeedback({
+        type: "error",
+        content: "Unexpected error occurred logging in.",
+      });
+    },
+  });
+
   return (
     <IntakeFlowForm>
       {appCtx.selfInfo ? (
         <Redirect to={nextPath} />
       ) : (
         <div className={"LoginForm__Controls"}>
-          {["sign up", "sign in"].includes(mode) && (
-            <>
-              <div className={"LoginForm__Oauth"}>
-                <GoogleSignInButton
-                  onStart={() => {
-                    setFormFeedback(undefined);
-                    setOauthFeedback(undefined);
-                  }}
-                  onSuccess={async () => {
-                    await nonAuthCtx.api.refreshCsrfToken();
-                    const { user } = await nonAuthCtx.api.getSelfInfo();
-                    setSelfInfo(user);
-                  }}
-                  onFailure={(reason) => {
-                    setOauthFeedback({
-                      type: "error",
-                      content: "Unexpected error occurred logging in.",
-                    });
-                  }}
-                  googleAuthUrl={fillRoute(APP_ROUTES.googleAuth, {})}
-                >
-                  {mode === "sign in"
-                    ? "Sign in with Google"
-                    : "Sign up with Google"}
-                </GoogleSignInButton>
-                <FormFeedback feedback={oauthFeedback} />
-              </div>
-            </>
-          )}
-          <Divider>
-            <span className={"light-text"}>or</span>
-          </Divider>
-          <form onSubmit={onSubmit} className={"LoginForm__Fields"}>
-            <FormFeedback feedback={formFeedback} />
-            <Input
-              defaultValue={
-                new URL(location.href).searchParams.get("email") || ""
-              }
-              name={"email"}
-              type={"input"}
-              size={"large"}
-              placeholder={"Work email address"}
-            />
-            <Input
-              name={"password"}
-              type={"password"}
-              size={"large"}
-              placeholder={"Password"}
-              autoComplete={"off"}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-            />
-            {mode === "sign up" && (
-              <React.Suspense>
-                <LazyPasswordStrengthBar
-                  className="LoginForm__SmallMargin"
-                  password={currentPassword}
-                />
-                <Input
-                  name={"firstName"}
-                  type={"firstName"}
-                  size={"large"}
-                  placeholder={"First name"}
-                />
-                <Input
-                  name={"lastName"}
-                  type={"lastName"}
-                  size={"large"}
-                  placeholder={"Last name"}
-                />
-              </React.Suspense>
-            )}
-            <Button
-              loading={submitting}
-              htmlType={"submit"}
-              type={"primary"}
-              size={"large"}
-            >
-              {mode === "sign in" ? "Sign in" : "Sign up"}
-            </Button>
-          </form>
-          {mode === "sign in" && (
-            <div className={"LoginForm__SignUpOrInToggle"}>
-              <LinkButton
-                onClick={() => setMode(nonAuthCtx, "forgot password")}
+          {isOidcOnly ? (
+            <div className={"LoginForm__Oauth"}>
+              <Button
+                type={"primary"}
+                size={"large"}
+                onClick={() => {
+                  window.location.href = `${window.location.origin}/api/v1/auth/oidc`;
+                }}
               >
-                I forgot my password.
-              </LinkButton>
-              <br />
-              New user?{" "}
-              <LinkButton onClick={() => setModeAndClearError("sign up")}>
-                Create account
-              </LinkButton>
-              <br />
-              <LinkButton onClick={() => setModeAndClearError("sso")}>
-                Sign in with SSO
-              </LinkButton>
+                {oidcConfig?.buttonLabel || "Sign in with OIDC"}
+              </Button>
+              <FormFeedback feedback={oauthFeedback} />
             </div>
-          )}
-          {mode === "sign up" && (
-            <div className={"LoginForm__SignUpOrInToggle"}>
-              Existing user?{" "}
-              <LinkButton onClick={() => setModeAndClearError("sign in")}>
-                Sign in
-              </LinkButton>
-            </div>
+          ) : (
+            <>
+              {["sign up", "sign in"].includes(mode) && (
+                <>
+                  <div className={"LoginForm__Oauth"}>
+                    <GoogleSignInButton
+                      onStart={() => {
+                        setFormFeedback(undefined);
+                        setOauthFeedback(undefined);
+                      }}
+                      onSuccess={async () => {
+                        await nonAuthCtx.api.refreshCsrfToken();
+                        const { user } = await nonAuthCtx.api.getSelfInfo();
+                        setSelfInfo(user);
+                      }}
+                      onFailure={(reason) => {
+                        setOauthFeedback({
+                          type: "error",
+                          content: "Unexpected error occurred logging in.",
+                        });
+                      }}
+                      googleAuthUrl={fillRoute(APP_ROUTES.googleAuth, {})}
+                    >
+                      {mode === "sign in"
+                        ? "Sign in with Google"
+                        : "Sign up with Google"}
+                    </GoogleSignInButton>
+                    <FormFeedback feedback={oauthFeedback} />
+                  </div>
+                </>
+              )}
+              <Divider>
+                <span className={"light-text"}>or</span>
+              </Divider>
+              <form onSubmit={onSubmit} className={"LoginForm__Fields"}>
+                <FormFeedback feedback={formFeedback} />
+                <Input
+                  defaultValue={
+                    new URL(location.href).searchParams.get("email") || ""
+                  }
+                  name={"email"}
+                  type={"input"}
+                  size={"large"}
+                  placeholder={"Work email address"}
+                />
+                <Input
+                  name={"password"}
+                  type={"password"}
+                  size={"large"}
+                  placeholder={"Password"}
+                  autoComplete={"off"}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                />
+                {mode === "sign up" && (
+                  <React.Suspense>
+                    <LazyPasswordStrengthBar
+                      className="LoginForm__SmallMargin"
+                      password={currentPassword}
+                    />
+                    <Input
+                      name={"firstName"}
+                      type={"firstName"}
+                      size={"large"}
+                      placeholder={"First name"}
+                    />
+                    <Input
+                      name={"lastName"}
+                      type={"lastName"}
+                      size={"large"}
+                      placeholder={"Last name"}
+                    />
+                  </React.Suspense>
+                )}
+                <Button
+                  loading={submitting}
+                  htmlType={"submit"}
+                  type={"primary"}
+                  size={"large"}
+                >
+                  {mode === "sign in" ? "Sign in" : "Sign up"}
+                </Button>
+              </form>
+              {mode === "sign in" && (
+                <div className={"LoginForm__SignUpOrInToggle"}>
+                  <LinkButton
+                    onClick={() => setMode(nonAuthCtx, "forgot password")}
+                  >
+                    I forgot my password.
+                  </LinkButton>
+                  <br />
+                  New user?{" "}
+                  <LinkButton onClick={() => setModeAndClearError("sign up")}>
+                    Create account
+                  </LinkButton>
+                  <br />
+                  <LinkButton onClick={() => setModeAndClearError("sso")}>
+                    Sign in with SSO
+                  </LinkButton>
+                </div>
+              )}
+              {mode === "sign up" && (
+                <div className={"LoginForm__SignUpOrInToggle"}>
+                  Existing user?{" "}
+                  <LinkButton onClick={() => setModeAndClearError("sign in")}>
+                    Sign in
+                  </LinkButton>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -490,6 +535,14 @@ export function SsoLoginForm(props: { onLoggedIn: () => void }) {
     undefined
   );
 
+  const { data: oidcConfig } = useSWR<OidcPublicConfig>(
+    "/auth/oidc/config",
+    async (url) => nonAuthCtx.api.get(url)
+  );
+
+  const isOidcOnly =
+    oidcConfig?.enabled && oidcConfig?.disableOtherAuth !== false;
+
   const { mutate: mutatePreviousSsoEmail, data: previousSsoEmail } = useSWR(
     ssoEmailKey,
     async () => await nonAuthCtx.api.getStorageItem(ssoEmailKey)
@@ -515,6 +568,28 @@ export function SsoLoginForm(props: { onLoggedIn: () => void }) {
       setSubmitting(false);
     },
   });
+
+  if (isOidcOnly) {
+    return (
+      <IntakeFlowForm>
+        <div className="LoginForm__Controls">
+          <div className="LoginForm__Oauth">
+            <Button
+              type="primary"
+              size="large"
+              onClick={() => {
+                window.location.href = `${window.location.origin}/api/v1/auth/oidc`;
+              }}
+            >
+              {oidcConfig?.buttonLabel || "Sign in with OIDC"}
+            </Button>
+            <FormFeedback feedback={feedback} />
+          </div>
+        </div>
+      </IntakeFlowForm>
+    );
+  }
+
   return (
     <IntakeFlowForm>
       <div className="LoginForm__Controls">

@@ -69,6 +69,36 @@ interface Secrets {
     accessKeyId: string;
     secretAccessKey: string;
   };
+  oidc?: {
+    clientId: string;
+    clientSecret: string;
+    authorizationUrl: string;
+    tokenUrl: string;
+    userInfoUrl: string;
+    issuer?: string;
+    callbackUrl?: string;
+    scope?: string;
+    buttonLabel?: string;
+    disableOtherAuth?: boolean;
+    adminEmailsBypass?: string[];
+    /**
+     * Optional Kratos admin URL. When provided, OIDC logins will fetch the
+     * Kratos identity traits (e.g. given_name, family_name) using the
+     * identity_id claim and merge them into the OIDC profile.
+     */
+    kratosAdminUrl?: string;
+    /**
+     * JSON-path mappings from the OIDC profile (including Kratos traits when
+     * kratosAdminUrl is set) to Plasmic user fields.
+     */
+    claimMappings?: {
+      email?: string;
+      firstName?: string;
+      lastName?: string;
+      avatarUrl?: string;
+      emailVerified?: string;
+    };
+  };
 }
 
 export function getEncryptionKey() {
