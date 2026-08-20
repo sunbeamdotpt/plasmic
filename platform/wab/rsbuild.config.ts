@@ -269,6 +269,7 @@ export default defineConfig({
             NODE_ENV: REQUIRED_VAR,
             COMMITHASH: commitHash,
             STATIC_URL: OPTIONAL_VAR,
+            REACT_APP_DEFAULT_HOST_URL: OPTIONAL_VAR,
             POSTHOG_API_KEY: OPTIONAL_VAR,
             POSTHOG_HOST: OPTIONAL_VAR,
             POSTHOG_REVERSE_PROXY_HOST: OPTIONAL_VAR,

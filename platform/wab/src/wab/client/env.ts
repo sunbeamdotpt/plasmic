@@ -7,6 +7,7 @@ export const ENV = {
   NODE_ENV: ensure(process.env.NODE_ENV, "NODE_ENV must be defined"),
   COMMITHASH: ensure(process.env.COMMITHASH, "COMMITHASH must be defined"),
   STATIC_URL: process.env.STATIC_URL,
+  REACT_APP_DEFAULT_HOST_URL: process.env.REACT_APP_DEFAULT_HOST_URL,
   POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
   POSTHOG_HOST: process.env.POSTHOG_HOST,
   POSTHOG_REVERSE_PROXY_HOST: process.env.POSTHOG_REVERSE_PROXY_HOST,
