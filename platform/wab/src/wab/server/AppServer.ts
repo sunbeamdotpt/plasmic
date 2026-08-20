@@ -697,6 +697,20 @@ function addStaticRoutes(app: express.Application) {
   app.use(cors(), express.static("public"));
 }
 
+function addSpaFallbackRoute(app: express.Application) {
+  // For on-site deployments, the backend serves the built Studio frontend.
+  // Client-side routes (e.g., /workspaces/:id) don't correspond to static
+  // files, so fall back to index.html and let the React router handle them.
+  // API and explicit server routes are registered before this, so they still
+  // 404 normally.
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api/")) {
+      return next();
+    }
+    res.sendFile(path.resolve("build", "index.html"));
+  });
+}
+
 function addOptionsRoutes(app: express.Application) {
   // Add CORS preflight routes before all the middlewares to avoid
   // connecting to the DB unnecessarily.
@@ -1951,6 +1965,8 @@ export async function createApp(
   addStaticRoutes(app);
 
   addRoutes(app);
+
+  addSpaFallbackRoute(app);
 
   // Only error middlewares will be called after this
   // Add ERROR handlers
