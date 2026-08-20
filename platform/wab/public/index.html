@@ -10,7 +10,7 @@
       const origin = maybeParams
         ? maybeParams.get("origin")
         : window.location.origin;
-      const staticOrigin = "<%= staticUrl %>";
+      const staticOrigin = "<%= staticUrl %>".replace(/\/$/, "");
     </script>
     <script>
       if (typeof window !== "undefined") {

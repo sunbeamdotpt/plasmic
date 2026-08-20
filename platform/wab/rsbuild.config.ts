@@ -74,8 +74,9 @@ class AppendSourceMapWithHash implements RspackPluginInstance {
           let content = assets[filePath].source();
           // We use the full path (with publicUrl) because the files may be
           // loaded from the inner frame and so the relative path would be
-          // wrong.
-          const newMapping = `//# sourceMappingURL=${publicUrl}/${sourceMapFilePath}`;
+          // wrong. Avoid a protocol-relative URL when publicUrl is "/".
+          const baseUrl = publicUrl.replace(/\/$/, "");
+          const newMapping = `//# sourceMappingURL=${baseUrl}/${sourceMapFilePath}`;
           if (content.includes("//# sourceMappingURL=")) {
             content = content
               .toString()
