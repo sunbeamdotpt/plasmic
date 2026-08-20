@@ -60,7 +60,10 @@ export function getPublicUrl() {
 }
 
 export function getStaticUrl() {
-  return process.env.STATIC_URL || getPublicUrl();
+  const staticUrl = process.env.STATIC_URL || getPublicUrl();
+  // When STATIC_URL is just "/", same-origin assets should resolve against the
+  // current origin. Otherwise "/static" becomes the protocol-relative "//static".
+  return staticUrl === "/" ? getPublicUrl() : staticUrl.replace(/\/$/, "");
 }
 
 export function getStaticBaseUrl() {
