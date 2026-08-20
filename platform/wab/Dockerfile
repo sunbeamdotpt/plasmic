@@ -18,6 +18,8 @@
 FROM node:24.16.0-alpine AS builder
 
 ARG BUILD_COMMIT_HASH=sunbeam
+# On-site deployments serve the canvas host iframe from the same origin.
+ARG REACT_APP_DEFAULT_HOST_URL=https://plasmic.sunbeam.pt/static/host.html
 
 ENV PUPPETEER_SKIP_DOWNLOAD=1
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=1
@@ -84,6 +86,7 @@ RUN mkdir -p src/wab/gen && make
 RUN pnpm build-css && \
     NODE_OPTIONS='--max-old-space-size=16384' \
     PUBLIC_URL=/ STATIC_URL=/ \
+    REACT_APP_DEFAULT_HOST_URL="${REACT_APP_DEFAULT_HOST_URL}" \
     POSTHOG_API_KEY='' POSTHOG_HOST='' POSTHOG_REVERSE_PROXY_HOST='' \
     SENTRY_DSN='' SENTRY_ORG_ID='' SENTRY_PROJECT_ID='' \
     STRIPE_PUBLISHABLE_KEY='' \
